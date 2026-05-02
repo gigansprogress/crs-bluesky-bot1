@@ -17,7 +17,10 @@ def save_seen(seen):
         json.dump(list(seen), f)
 
 def fetch_new_reports(seen):
-    resp = requests.get(f"{CRS_URL}/", timeout=15)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    resp = requests.get(f"{CRS_URL}/", headers=headers, timeout=15)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, "html.parser")
     new = []
@@ -80,6 +83,3 @@ def main():
             print(f"Error on {report['id']}: {e}")
     
     save_seen(seen)
-
-if __name__ == "__main__":
-    main()
