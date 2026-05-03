@@ -35,8 +35,9 @@ def fetch_new_reports(seen):
 def summarize(report):
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     prompt = (
-        f"Write 1-2 sentences in plain English describing what this Congressional Research Service "
-        f"report is about, for a general audience. Keep it under 200 characters.\n\n"
+       f"Write 1-2 sentences in plain English describing what this Congressional Research Service "
+        f"report is about, for a general audience. Keep it under 200 characters. "
+        f"Do not include any headers, labels, or prefixes like 'Summary:' — just the sentences.\n\n"
         f"Title: {report['title']}"
     )
     msg = client.messages.create(
