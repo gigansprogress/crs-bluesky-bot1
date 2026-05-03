@@ -16,12 +16,15 @@ def save_seen(seen):
         json.dump(list(seen), f)
 
 def fetch_new_reports(seen):
-    params = {
-        "api_key": os.environ["CONGRESS_API_KEY"],
-        "limit": 20,
-        "sort": "updateDate desc"
+    headers = {
+        "X-Api-Key": os.environ["CONGRESS_API_KEY"]
     }
-    resp = requests.get(CONGRESS_API, params=params, timeout=15)
+    params = {
+        "limit": 20,
+        "sort": "updateDate desc",
+        "format": "json"
+    }
+    resp = requests.get(CONGRESS_API, headers=headers, params=params, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     new = []
