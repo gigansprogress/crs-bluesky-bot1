@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      -- name: Run bot
+      - name: Run bot
         env:
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
