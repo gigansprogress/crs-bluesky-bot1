@@ -1,10 +1,9 @@
-import json, os, re, requests
-from bs4 import BeautifulSoup
+import json, os, requests
 from atproto import Client
 import anthropic
 
-CRS_URL = "https://crsreports.congress.gov"
 STATE_FILE = "seen_reports.json"
+CONGRESS_API = "https://api.congress.gov/v3/crs-report"
 
 def load_seen():
     if os.path.exists(STATE_FILE):
@@ -17,26 +16,22 @@ def save_seen(seen):
         json.dump(list(seen), f)
 
 def fetch_new_reports(seen):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    params = {
+        "api_key": os.environ["CONGRESS_API_KEY"],
+        "limit": 20,
+        "sort": "updateDate+desc"
     }
-    resp = requests.get(f"{CRS_URL}/", headers=headers, timeout=15)
+    resp = requests.get(CONGRESS_API, params=params, timeout=15)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+    data = resp.json()
     new = []
-    for item in soup.select(".results-list .result-item"):
-        link_el = item.select_one("a[href*='/product/']")
-        if not link_el:
-            continue
-        report_id = link_el["href"].split("/product/")[-1].strip("/")
+    for report in data.get("CRSReports", []):
+        report_id = report.get("productNumber", "")
         if report_id in seen:
             continue
-        title = link_el.get_text(strip=True)
-        url = CRS_URL + link_el["href"]
-        abstract = ""
-        abs_el = item.select_one(".summary, .abstract, p")
-        if abs_el:
-            abstract = abs_el.get_text(strip=True)[:500]
+        title = report.get("title", "")
+        url = f"https://crsreports.congress.gov/product/pdf/{report_id[:2]}/{report_id}"
+        abstract = report.get("summary", "")[:500]
         new.append({"id": report_id, "title": title, "url": url, "abstract": abstract})
     return new
 
@@ -48,7 +43,7 @@ def summarize(report):
         f"Title: {report['title']}\nAbstract: {report['abstract']}"
     )
     msg = client.messages.create(
-        model="claude-opus-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=120,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -57,23 +52,19 @@ def summarize(report):
 def post_to_bluesky(report, summary):
     bsky = Client()
     bsky.login(os.environ["BSKY_HANDLE"], os.environ["BSKY_APP_PASSWORD"])
-    
     text = f"📋 {report['title']}\n\n{summary}\n\n🔗 {report['url']}"
     if len(text) > 298:
         max_title = 298 - len(summary) - len(report['url']) - 12
         text = f"📋 {report['title'][:max_title]}…\n\n{summary}\n\n🔗 {report['url']}"
-    
     bsky.send_post(text=text)
     print(f"Posted: {report['title']}")
 
 def main():
     seen = load_seen()
     new_reports = fetch_new_reports(seen)
-    
     if not new_reports:
         print("No new reports.")
         return
-    
     for report in new_reports[:5]:
         try:
             summary = summarize(report) if os.environ.get("ANTHROPIC_API_KEY") else report["abstract"][:220]
@@ -81,5 +72,7 @@ def main():
             seen.add(report["id"])
         except Exception as e:
             print(f"Error on {report['id']}: {e}")
-    
     save_seen(seen)
+
+if __name__ == "__main__":
+    main()
