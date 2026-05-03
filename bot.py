@@ -3,7 +3,7 @@ from atproto import Client
 import anthropic
 
 STATE_FILE = "seen_reports.json"
-CONGRESS_API = "https://api.congress.gov/v3/crs-report?format=json"
+CONGRESS_API = "https://api.data.gov/congress/v3/crs-report"
 
 def load_seen():
     if os.path.exists(STATE_FILE):
