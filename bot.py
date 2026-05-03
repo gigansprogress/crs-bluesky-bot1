@@ -1,10 +1,9 @@
-import json, os, requests
-from bs4 import BeautifulSoup
+import json, os, requests, csv, io
 from atproto import Client
 import anthropic
 
 STATE_FILE = "seen_reports.json"
-SOURCE_URL = "https://www.everycrsreport.com/reports.html"
+CSV_URL = "https://www.everycrsreport.com/reports.csv"
 
 def load_seen():
     if os.path.exists(STATE_FILE):
@@ -17,35 +16,32 @@ def save_seen(seen):
         json.dump(list(seen), f)
 
 def fetch_new_reports(seen):
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    resp = requests.get(SOURCE_URL, headers=headers, timeout=15)
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; CRSBot/1.0)"}
+    resp = requests.get(CSV_URL, headers=headers, timeout=30)
     resp.raise_for_status()
-    soup = BeautifulSoup(resp.text, "html.parser")
+    reader = csv.DictReader(io.StringIO(resp.text))
+    rows = list(reader)
+    # CSV is newest-first; take first 50 rows to check for new ones
     new = []
-    for row in soup.select("table tr"):
-        link = row.select_one("a[href*='/reports/']")
-        if not link:
+    for row in rows[:50]:
+        report_id = row.get("number", "").strip()
+        if not report_id or report_id in seen:
             continue
-        report_id = link["href"].split("/reports/")[-1].strip("/").split(".")[0]
-        if report_id in seen:
-            continue
-        title = link.get_text(strip=True)
-        url = "https://www.everycrsreport.com" + link["href"]
-        tds = row.select("td")
-        abstract = tds[-1].get_text(strip=True)[:500] if len(tds) > 1 else ""
-        new.append({"id": report_id, "title": title, "url": url, "abstract": abstract})
+        title = row.get("title", "").strip()
+        url = f"https://www.everycrsreport.com/reports/{report_id}.html"
+        new.append({"id": report_id, "title": title, "url": url, "abstract": title})
     return new
 
 def summarize(report):
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     prompt = (
-        f"Write a 2-sentence plain-English summary of this Congressional Research Service report "
-        f"for a general audience. Keep it under 220 characters total.\n\n"
-        f"Title: {report['title']}\nAbstract: {report['abstract']}"
+        f"Write 1-2 sentences in plain English describing what this Congressional Research Service "
+        f"report is about, for a general audience. Keep it under 200 characters.\n\n"
+        f"Title: {report['title']}"
     )
     msg = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=120,
+        max_tokens=100,
         messages=[{"role": "user", "content": prompt}]
     )
     return msg.content[0].text.strip()
@@ -68,7 +64,7 @@ def main():
         return
     for report in new_reports[:5]:
         try:
-            summary = summarize(report) if os.environ.get("ANTHROPIC_API_KEY") else report["abstract"][:220]
+            summary = summarize(report) if os.environ.get("ANTHROPIC_API_KEY") else report["title"]
             post_to_bluesky(report, summary)
             seen.add(report["id"])
         except Exception as e:
