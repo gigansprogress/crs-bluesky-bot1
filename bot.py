@@ -3,7 +3,7 @@ from atproto import Client
 import anthropic
 
 STATE_FILE = "seen_reports.json"
-CONGRESS_API = "https://api.congress.gov/v3/crs-report"
+CONGRESS_API = "https://api.congress.gov/v3/crs-report?format=json"
 
 def load_seen():
     if os.path.exists(STATE_FILE):
@@ -19,22 +19,22 @@ def fetch_new_reports(seen):
     params = {
         "api_key": os.environ["CONGRESS_API_KEY"],
         "limit": 20,
-        "sort": "updateDate+desc"
+        "sort": "updateDate desc"
     }
     resp = requests.get(CONGRESS_API, params=params, timeout=15)
     resp.raise_for_status()
     data = resp.json()
     new = []
-    for report in data.get("CRSReports", []):
+    for report in data.get("crsReports", []):
         report_id = report.get("productNumber", "")
-        if report_id in seen:
+        if not report_id or report_id in seen:
             continue
         title = report.get("title", "")
         url = f"https://crsreports.congress.gov/product/pdf/{report_id[:2]}/{report_id}"
         abstract = report.get("summary", "")[:500]
         new.append({"id": report_id, "title": title, "url": url, "abstract": abstract})
     return new
-
+    
 def summarize(report):
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     prompt = (
