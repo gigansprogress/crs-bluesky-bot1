@@ -1,9 +1,10 @@
 import json, os, requests
+from bs4 import BeautifulSoup
 from atproto import Client
 import anthropic
 
 STATE_FILE = "seen_reports.json"
-CONGRESS_API = "https://api.data.gov/congress/v3/crs-report"
+SOURCE_URL = "https://www.everycrsreport.com/reports.html"
 
 def load_seen():
     if os.path.exists(STATE_FILE):
@@ -16,28 +17,25 @@ def save_seen(seen):
         json.dump(list(seen), f)
 
 def fetch_new_reports(seen):
-    headers = {
-        "X-Api-Key": os.environ["CONGRESS_API_KEY"]
-    }
-    params = {
-        "limit": 20,
-        "sort": "updateDate desc",
-        "format": "json"
-    }
-    resp = requests.get(CONGRESS_API, headers=headers, params=params, timeout=15)
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    resp = requests.get(SOURCE_URL, headers=headers, timeout=15)
     resp.raise_for_status()
-    data = resp.json()
+    soup = BeautifulSoup(resp.text, "html.parser")
     new = []
-    for report in data.get("crsReports", []):
-        report_id = report.get("productNumber", "")
-        if not report_id or report_id in seen:
+    for row in soup.select("table tr"):
+        link = row.select_one("a[href*='/reports/']")
+        if not link:
             continue
-        title = report.get("title", "")
-        url = f"https://crsreports.congress.gov/product/pdf/{report_id[:2]}/{report_id}"
-        abstract = report.get("summary", "")[:500]
+        report_id = link["href"].split("/reports/")[-1].strip("/").split(".")[0]
+        if report_id in seen:
+            continue
+        title = link.get_text(strip=True)
+        url = "https://www.everycrsreport.com" + link["href"]
+        tds = row.select("td")
+        abstract = tds[-1].get_text(strip=True)[:500] if len(tds) > 1 else ""
         new.append({"id": report_id, "title": title, "url": url, "abstract": abstract})
     return new
-    
+
 def summarize(report):
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     prompt = (
