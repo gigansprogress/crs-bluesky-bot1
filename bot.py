@@ -49,11 +49,25 @@ def summarize(report):
 def post_to_bluesky(report, summary):
     bsky = Client()
     bsky.login(os.environ["BSKY_HANDLE"], os.environ["BSKY_APP_PASSWORD"])
-    text = f"📋 {report['title']}\n\n{summary}\n\n🔗 {report['url']}"
-    if len(text) > 298:
-        max_title = 298 - len(summary) - len(report['url']) - 12
-        text = f"📋 {report['title'][:max_title]}…\n\n{summary}\n\n🔗 {report['url']}"
-    bsky.send_post(text=text)
+
+    # First post: full title + summary
+    first_text = f"📋 {report['title']}\n\n{summary}"
+    first_post = bsky.send_post(text=first_text)
+
+    # Reply post: clickable link
+    link_text = "Read the full report →"
+    reply_ref = {
+        "root": {"uri": first_post.uri, "cid": first_post.cid},
+        "parent": {"uri": first_post.uri, "cid": first_post.cid}
+    }
+    link_bytes = link_text.encode("utf-8")
+    facets = [
+        {
+            "index": {"byteStart": 0, "byteEnd": len(link_bytes)},
+            "features": [{"$type": "app.bsky.richtext.facet#link", "uri": report["url"]}]
+        }
+    ]
+    bsky.send_post(text=link_text, reply_to=reply_ref, facets=facets)
     print(f"Posted: {report['title']}")
 
 def main():
